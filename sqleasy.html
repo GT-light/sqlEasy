@@ -1,0 +1,2004 @@
+<!DOCTYPE html>
+<html lang="zh">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>可视化 SQL 查询构建器</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://rsms.me/inter/inter.css');
+
+        :root {
+            --primary-blue: #3b82f6;
+            /* Dify-like blue */
+            --primary-blue-dark: #2563eb;
+            --secondary-slate: #f8fafc;
+            --text-dark: #1e293b;
+            --text-medium: #475569;
+            --text-light: #64748b;
+            --border-light: #e2e8f0;
+            --bg-card: white;
+            --bg-subtle: #f1f5f9;
+            /* Lighter slate for headers/accents */
+            --bg-subquery: #eff6ff;
+            /* Light blue for subquery */
+            --border-subquery: #93c5fd;
+            /* Blue border for subquery */
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--secondary-slate);
+            color: var(--text-medium);
+        }
+
+        .form-section {
+            border: 1px solid var(--border-light);
+            background-color: var(--bg-card);
+            border-radius: 0.5rem;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+        }
+
+        .clause-card {
+            position: relative;
+            padding-top: 4.5rem;
+            /* Adjusted for smaller header */
+        }
+
+        .clause-header {
+            position: absolute;
+            top: -1px;
+            left: -1px;
+            background-color: var(--bg-subtle);
+            color: var(--text-medium);
+            padding: 0.35rem 1rem;
+            /* Slightly more vertical padding */
+            border-radius: 0.5rem 0 0.5rem 0;
+            font-size: 0.875rem;
+            font-weight: 600;
+            border-right: 1px solid var(--border-light);
+            border-bottom: 1px solid var(--border-light);
+        }
+
+        .delete-btn {
+            position: absolute;
+            top: 0.5rem;
+            right: 0.75rem;
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 1.25rem;
+            /* Larger for better hit area */
+            line-height: 1;
+            color: #94a3b8;
+            transition: color 0.2s;
+        }
+
+        .delete-btn:hover {
+            color: #ef4444;
+            /* Red for delete */
+        }
+
+        .input-field {
+            border: 1px solid #cbd5e1;
+            border-radius: 0.375rem;
+            padding: 0.5rem 0.75rem;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            background-color: white;
+            width: 100%;
+        }
+
+        .input-field:focus {
+            outline: none;
+            border-color: var(--primary-blue);
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
+            /* Lighter blue ring */
+        }
+
+        .action-button {
+            background-color: var(--primary-blue);
+            color: white;
+            padding: 0.75rem 1.5rem;
+            /* More prominent */
+            border-radius: 0.5rem;
+            font-weight: 600;
+            transition: background-color 0.2s, box-shadow 0.2s;
+            box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+        }
+
+        .action-button:hover {
+            background-color: var(--primary-blue-dark);
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+        }
+
+        .secondary-button {
+            background-color: var(--bg-subtle);
+            color: var(--text-medium);
+            border: 1px solid var(--border-light);
+            padding: 0.6rem 1.2rem;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .secondary-button:hover {
+            background-color: var(--border-light);
+            border-color: #cbd5e1;
+        }
+
+        .danger-button {
+            background-color: #ef4444;
+            /* Red */
+        }
+
+        .danger-button:hover {
+            background-color: #dc2626;
+            /* Darker red */
+        }
+
+        .sql-code-container {
+            position: relative;
+        }
+
+        #sql-editor {
+            background-color: #1e293b;
+            color: #e2e8f0;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            font-family: 'Fira Code', 'Courier New', Courier, monospace;
+            /* Fira Code if available, else Courier */
+            white-space: pre-wrap;
+            word-break: break-all;
+            width: 100%;
+            /* min-height: 150px; REMOVED FOR AUTO-HEIGHT */
+            height: auto;
+            /* Auto height with resize */
+            border: 1px solid #334155;
+            resize: vertical;
+            /* Still allow manual resize */
+            overflow-y: hidden;
+            /* Hide scrollbar initially, content expands height */
+        }
+
+        .copy-btn {
+            position: absolute;
+            top: 0.75rem;
+            /* Adjusted for padding */
+            right: 0.75rem;
+            background-color: var(--bg-subtle);
+            color: var(--text-medium);
+            border: 1px solid var(--border-light);
+            padding: 0.35rem 0.75rem;
+            border-radius: 0.375rem;
+            font-size: 0.875rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .copy-btn:hover {
+            background-color: var(--border-light);
+        }
+
+        #history-sidebar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 350px;
+            height: 100%;
+            background-color: var(--bg-card);
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.15);
+            transform: translateX(-100%);
+            transition: transform 0.3s ease-in-out;
+            z-index: 50;
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid var(--border-light);
+        }
+
+        #history-sidebar.open {
+            transform: translateX(0);
+        }
+
+        #history-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.6);
+            opacity: 0;
+            transition: opacity 0.3s ease-in-out;
+            z-index: 49;
+            pointer-events: none;
+        }
+
+        #history-overlay.open {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        #history-toggle {
+            position: fixed;
+            top: 50%;
+            left: 0;
+            transform: translateY(-50%);
+            background-color: var(--primary-blue);
+            color: white;
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            padding: 1rem 0.5rem;
+            border-radius: 0 0.5rem 0.5rem 0;
+            cursor: pointer;
+            z-index: 40;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            transition: background-color 0.2s;
+        }
+
+        #history-toggle:hover {
+            background-color: var(--primary-blue-dark);
+        }
+
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.6);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.2s, visibility 0.2s;
+        }
+
+        .modal-overlay.open {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .history-action-btn {
+            font-size: 0.875rem;
+            font-weight: 500;
+            transition: color 0.2s;
+        }
+
+        .subquery-container {
+            border: 1px dashed var(--border-subquery);
+            background-color: var(--bg-subquery);
+            padding: 1rem;
+            border-radius: 0.5rem;
+            margin-top: 0.75rem;
+            /* More space */
+            margin-left: 2rem;
+            /* Indent for visual hierarchy */
+            display: grid;
+            grid-template-columns: auto 1fr;
+            /* Label then input */
+            gap: 0.75rem;
+            align-items: center;
+        }
+
+        #data-preview-container,
+        .demo-table-container {
+            background-color: var(--secondary-slate);
+            /* Lighter background for data */
+            border: 1px solid var(--border-light);
+            border-radius: 0.5rem;
+            padding: 1rem;
+            max-height: 350px;
+            /* Slightly taller */
+            overflow-y: auto;
+        }
+
+        #data-preview-table,
+        .demo-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        #data-preview-table th,
+        #data-preview-table td,
+        .demo-table th,
+        .demo-table td {
+            padding: 0.6rem 0.8rem;
+            /* More padding */
+            text-align: left;
+            border-bottom: 1px solid var(--border-light);
+        }
+
+        #data-preview-table th,
+        .demo-table th {
+            background-color: var(--bg-subtle);
+            font-weight: 600;
+            color: var(--text-dark);
+        }
+
+        #toast-notification {
+            position: fixed;
+            top: 1.5rem;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: #22c55e;
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            z-index: 200;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s ease-out, transform 0.3s ease-out, visibility 0.3s;
+        }
+
+        #toast-notification.show {
+            opacity: 1;
+            visibility: visible;
+            transform: translate(-50%, 0);
+        }
+
+        /* DQL/DML Toggle Button Group */
+        .toggle-group {
+            display: flex;
+            background-color: var(--bg-subtle);
+            border-radius: 0.5rem;
+            overflow: hidden;
+            border: 1px solid var(--border-light);
+            margin-bottom: 1.5rem;
+        }
+
+        .toggle-group button {
+            flex: 1;
+            padding: 0.75rem 1.25rem;
+            font-weight: 600;
+            color: var(--text-medium);
+            background-color: transparent;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+            /* For the active indicator */
+        }
+
+        .toggle-group button.active {
+            background-color: var(--primary-blue);
+            color: white;
+            box-shadow: inset 0 0 0 1px var(--primary-blue-dark), 0 2px 4px rgba(0, 0, 0, 0.1);
+            z-index: 1;
+        }
+
+        .toggle-group button:not(.active):hover {
+            background-color: var(--border-light);
+        }
+
+        .p-6 {
+            padding: 2.5rem !important;
+            /* 使用 !important 来确保覆盖 Tailwind 的默认值 */
+        }
+
+        .toggle-group button+button {
+            border-left: 1px solid var(--border-light);
+        }
+    </style>
+</head>
+
+<body class="bg-slate-50 text-slate-700">
+    <!-- 新建查询按钮（主标题下方左侧，避免遮挡） -->
+    <div class="w-full flex items-center justify-start mb-2">
+        <button id="new-query-btn-fixed" class="action-button ml-2 mt-2">➕ 新建查询</button>
+    </div>
+    <div id="history-overlay" class="modal-overlay"></div>
+    <aside id="history-sidebar">
+        <div class="p-4 border-b border-slate-200">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-2xl font-bold text-slate-800">查询历史</h2>
+                <button id="history-close-btn"
+                    class="text-3xl text-slate-500 hover:text-slate-800 focus:outline-none">&times;</button>
+            </div>
+            <button id="new-query-btn" class="w-full action-button">➕ 新建查询</button>
+        </div>
+        <div id="history-list" class="flex-1 overflow-y-auto p-2 space-y-2"></div>
+        <div id="demo-section" class="p-2 border-t border-slate-200 mt-auto">
+            <div class="p-3 border border-slate-200 rounded-md hover:bg-amber-50 group cursor-pointer"
+                id="live-demo-btn">
+                <h4 class="font-bold text-amber-800 group-hover:text-amber-900 truncate">⭐ 交互式案例：员工分析</h4>
+                <p class="text-sm text-slate-600 truncate">体验多表联查、筛选与分组</p>
+            </div>
+        </div>
+    </aside>
+    <div id="history-toggle">📜 历史记录</div>
+
+    <div id="toast-notification" class="hidden">已新建查询</div>
+
+    <div class="container mx-auto max-w-6xl p-4 md:p-8">
+        <header class="text-center mb-10 relative">
+            <h1 class="text-4xl md:text-5xl font-bold text-slate-900">智能 SQL 查询构建器</h1>
+            <p class="text-slate-600 mt-3 text-lg">一个功能全面、体验卓越的 SQL 工作台。</p>
+        </header>
+
+        <div class="lg:grid lg:grid-cols-2 lg:gap-8">
+            <main id="builder-form">
+                <div class="flex items-center gap-4 mb-4 flex-wrap">
+                    <h2 class="text-2xl font-bold text-slate-800">可视化构建器</h2>
+                    <button id="clear-builder-btn" class="secondary-button !py-2 !px-4 text-sm">🧹 清除内容</button>
+                </div>
+
+                <div class="toggle-group mb-6">
+                    <button id="toggle-dql" class="active">DQL 查询</button>
+                    <button id="toggle-dml">DML / DDL 操作</button>
+                </div>
+
+
+                <div id="query-builder-container">
+                    <section class="form-section p-6 mb-6">
+                        <div class="clause-header">数据源 (FROM)</div>
+                        <div class="flex items-center flex-wrap gap-4 text-lg">
+                            <span>从</span>
+                            <input type="text" id="from-table" class="input-field !w-48" placeholder="主表名"
+                                list="table-history">
+                            <datalist id="table-history"></datalist>
+                            <span>表开始查询。</span>
+                        </div>
+                    </section>
+
+                    <section class="form-section p-6 mb-6">
+                        <div class="clause-header">选取 (SELECT)</div>
+                        <div class="flex items-center flex-wrap gap-4 text-lg" style="flex-wrap:wrap; min-width:0;">
+                            <span>选取</span>
+                            <input type="text" id="select-columns" class="input-field min-w-[120px]"
+                                placeholder="列名 (用逗号分隔, * 代表所有)">
+                            <datalist id="column-history"></datalist>
+                            <span>列。</span>
+                        </div>
+                        <div id="select-agg-list" class="mt-3 space-y-2"></div>
+                        <button id="add-select-agg-btn" type="button"
+                            class="secondary-button mt-2 !py-2 !px-3 text-sm">➕ 添加聚合</button>
+                    </section>
+
+                    <div id="optional-sections-container"></div>
+                </div>
+
+                <div id="dml-builder-container" class="hidden space-y-6"></div>
+
+                <div class="mt-6" id="dql-actions">
+                    <fieldset class="border border-slate-200 p-4 rounded-lg">
+                        <legend class="px-2 font-semibold text-slate-600">数据查询 (DQL) 子句</legend>
+                        <div class="flex flex-wrap gap-3">
+                            <button class="secondary-button" data-clause="join" title="将多个表根据共同字段合并起来">➕ 合并
+                                (JOIN)</button>
+                            <button class="secondary-button" data-clause="where" title="对原始数据进行逐行筛选">➕ 筛选
+                                (WHERE)</button>
+                            <button class="secondary-button" data-clause="groupby" title="按指定列分组，用于聚合统计">➕ 分组 (GROUP
+                                BY)</button>
+                            <button class="secondary-button" data-clause="orderby" title="对最终结果进行排序">➕ 排序 (ORDER
+                                BY)</button>
+                            <button class="secondary-button" data-clause="limit" title="限制返回的结果行数">➕ 限制 (LIMIT)</button>
+                        </div>
+                    </fieldset>
+                </div>
+
+                <div class="mt-6 hidden" id="dml-actions">
+                    <fieldset class="border border-slate-200 p-4 rounded-lg">
+                        <legend class="px-2 font-semibold text-slate-600">数据操纵与定义 (DML/DDL) 类型</legend>
+                        <div class="flex flex-wrap gap-3">
+                            <button class="secondary-button" data-dml="insert" title="向表中插入一行或多行新数据">✨ 插入
+                                (INSERT)</button>
+                            <button class="secondary-button" data-dml="update" title="更新表中已存在记录的数据">✨ 更新
+                                (UPDATE)</button>
+                            <button class="secondary-button" data-dml="delete" title="从表中删除符合条件的记录">✨ 删除
+                                (DELETE)</button>
+                            <button class="secondary-button" data-dml="create" title="创建一个新的数据表">✨ 创建表 (CREATE)</button>
+                        </div>
+                    </fieldset>
+                </div>
+
+            </main>
+
+            <aside>
+                <!-- 草稿本区域 -->
+                <section class="form-section p-4 mb-4" id="notebook-section">
+                    <div class="flex items-center justify-between cursor-pointer" id="notebook-toggle">
+                        <h2 class="text-lg font-bold text-slate-800">📝 草稿本 <span
+                                class="text-xs text-slate-500">(点击展开/收起)</span></h2>
+                        <span id="notebook-arrow" class="transition-transform">▼</span>
+                    </div>
+                    <div id="notebook-content" class="mt-3 hidden">
+                        <textarea id="notebook-textarea" class="input-field w-full h-28"
+                            placeholder="可在此记录思路、备注、临时SQL片段等..." style="resize:vertical;"></textarea>
+                    </div>
+                </section>
+                <section class="form-section p-6 shadow-md sticky top-8">
+                    <h2 class="text-2xl font-bold mb-4 text-slate-800">生成结果</h2>
+                    <div class="sql-code-container">
+                        <h3 class="font-semibold text-slate-600 mb-2">SQL 代码</h3>
+                        <textarea id="sql-editor" readonly></textarea>
+                        <button id="copy-btn" class="copy-btn">复制 SQL</button>
+                    </div>
+                    <div class="mt-4 hidden" id="data-preview-section">
+                        <h3 class="font-semibold text-slate-600 mb-2">数据预览 (动态案例)</h3>
+                        <div id="data-preview-container">
+                            <table id="data-preview-table"></table>
+                        </div>
+                    </div>
+                    <div class="mt-6">
+                        <h3 class="font-semibold text-slate-600 mb-2">流程描述</h3>
+                        <p id="summary-text" class="text-slate-700 bg-slate-100 p-3 rounded-md border border-slate-200">
+                        </p>
+                    </div>
+                    <div class="mt-6">
+                        <button id="save-btn" class="w-full action-button">💾 保存</button>
+                    </div>
+                </section>
+            </aside>
+        </div>
+
+        <div id="demo-base-tables-section" class="hidden mt-12">
+            <h2 class="text-3xl font-bold text-center mb-6 text-slate-900">案例原始数据表</h2>
+            <div id="demo-base-tables-container" class="grid md:grid-cols-3 gap-8"></div>
+        </div>
+    </div>
+
+    <div id="save-modal" class="modal-overlay">
+        <div class="bg-white p-6 rounded-lg shadow-xl w-full max-w-md">
+            <h2 class="text-2xl font-bold mb-4">保存查询</h2>
+            <form id="save-form">
+                <div class="mb-4">
+                    <label for="query-name" class="block font-semibold mb-1">名称</label>
+                    <input type="text" id="query-name" class="input-field" required>
+                </div>
+                <div class="mb-6">
+                    <label for="query-desc" class="block font-semibold mb-1">描述 (可选)</label>
+                    <textarea id="query-desc" class="input-field h-24"></textarea>
+                </div>
+                <div class="flex justify-end gap-4">
+                    <button type="button" id="cancel-save-btn"
+                        class="font-semibold text-slate-600 hover:text-slate-900">取消</button>
+                    <button type="submit" class="action-button">确认</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="delete-confirm-modal" class="modal-overlay">
+        <div class="bg-white p-6 rounded-lg shadow-xl w-full max-w-md">
+            <h2 class="text-2xl font-bold mb-2">确认删除</h2>
+            <p id="delete-confirm-text" class="mb-6">您确定要删除这个查询吗？此操作无法撤销。</p>
+            <div class="flex justify-end gap-4">
+                <button type="button" id="cancel-delete-btn"
+                    class="font-semibold text-slate-600 hover:text-slate-900">取消</button>
+                <button type="button" id="confirm-delete-btn" class="action-button danger-button">确认删除</button>
+            </div>
+        </div>
+    </div>
+
+    <footer class="text-center p-4 mt-8 text-sm text-slate-500">
+        - by 乘风-15381176968 -
+    </footer>
+
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- STATE MANAGEMENT ---
+            let dqlState = {}; // Stores the state for DQL queries
+            let dmlState = { // Stores states for different DML/DDL types
+                insert: { type: 'dml', dmlType: 'insert', data: { table: '', columns: '', values: '' } },
+                update: { type: 'dml', dmlType: 'update', data: { table: '', set: '', where: '' } },
+                delete: { type: 'dml', dmlType: 'delete', data: { table: '', where: '' } },
+                create: { type: 'ddl', dmlType: 'create', data: { table: '', columns: '' } }
+            };
+            let currentState = {}; // Reference to either dqlState or one of dmlState types
+            let clauseIdCounter = 0;
+            let history = JSON.parse(localStorage.getItem('sqlbuilder_history_v15')) || [];
+            let isDemoActive = false;
+
+            // --- DOM ELEMENTS ---
+            const fromInput = document.getElementById('from-table');
+            const selectInput = document.getElementById('select-columns');
+            const optionalSectionsContainer = document.getElementById('optional-sections-container');
+            const queryBuilderContainer = document.getElementById('query-builder-container');
+            const dmlBuilderContainer = document.getElementById('dml-builder-container');
+            const sqlEditor = document.getElementById('sql-editor');
+            const summaryTextEl = document.getElementById('summary-text');
+            const copyBtn = document.getElementById('copy-btn');
+            const saveBtn = document.getElementById('save-btn');
+            const historySidebar = document.getElementById('history-sidebar');
+            const historyToggle = document.getElementById('history-toggle');
+            const historyList = document.getElementById('history-list');
+            const historyOverlay = document.getElementById('history-overlay');
+            const historyCloseBtn = document.getElementById('history-close-btn');
+            const newQueryBtn = document.getElementById('new-query-btn');
+            const saveModal = document.getElementById('save-modal');
+            const saveForm = document.getElementById('save-form');
+            const cancelSaveBtn = document.getElementById('cancel-save-btn');
+            const liveDemoBtn = document.getElementById('live-demo-btn');
+            const dataPreviewSection = document.getElementById('data-preview-section');
+            const dataPreviewTable = document.getElementById('data-preview-table');
+            const demoBaseTablesSection = document.getElementById('demo-base-tables-section');
+            const demoBaseTablesContainer = document.getElementById('demo-base-tables-container');
+            const toast = document.getElementById('toast-notification');
+            const deleteConfirmModal = document.getElementById('delete-confirm-modal');
+            const deleteConfirmText = document.getElementById('delete-confirm-text');
+            const cancelDeleteBtn = document.getElementById('cancel-delete-btn');
+            const confirmDeleteBtn = document.getElementById('confirm-delete-btn');
+
+            const toggleDQLBtn = document.getElementById('toggle-dql');
+            const toggleDMLBtn = document.getElementById('toggle-dml');
+            const dqlActions = document.getElementById('dql-actions');
+            const dmlActions = document.getElementById('dml-actions');
+
+
+            // --- DEMO DATA ---
+            const demoData = {
+                state: {
+                    type: 'dql', from: 'employees', select: 'd.dept_name, e.emp_name, s.salary',
+                    clauses: [
+                        { id: 0, type: 'join', data: { type: 'INNER', table: 'departments', on1: 'e.dept_id', on2: 'd.dept_id' } },
+                        { id: 1, type: 'join', data: { type: 'LEFT', table: 'salaries', on1: 'e.emp_id', on2: 's.emp_id' } },
+                        { id: 2, type: 'where', data: { conditions: [{ logic: 'WHERE', column: 's.salary', op: '>', value: '80000', valueType: 'literal' }] } },
+                        { id: 3, type: 'orderby', data: { column: 's.salary', dir: 'DESC' } }
+                    ]
+                },
+                mockDb: {
+                    'employees': {
+                        alias: 'e',
+                        columns: ['emp_id', 'emp_name', 'dept_id'],
+                        data: [
+                            { emp_id: 1, emp_name: '张三', dept_id: 101 }, { emp_id: 2, emp_name: '李四', dept_id: 102 },
+                            { emp_id: 3, emp_name: '王五', dept_id: 101 }, { emp_id: 4, emp_name: '赵六', dept_id: 103 },
+                        ]
+                    },
+                    'departments': {
+                        alias: 'd',
+                        columns: ['dept_id', 'dept_name'],
+                        data: [{ dept_id: 101, dept_name: '研发部' }, { dept_id: 102, dept_name: '市场部' }, { dept_id: 103, dept_name: '销售部' }]
+                    },
+                    'salaries': {
+                        alias: 's',
+                        columns: ['emp_id', 'salary'],
+                        data: [{ emp_id: 1, salary: 95000 }, { emp_id: 2, salary: 78000 }, { emp_id: 3, salary: 82000 }, { emp_id: 4, salary: 110000 }]
+                    }
+                }
+            };
+
+            // --- TEMPLATES ---
+            const clauseTemplates = {
+                where: (id) => `<div class="clause-header">筛选 (WHERE)</div><button class="delete-btn" data-id="${id}">&times;</button><div class="space-y-3" data-container="conditions"></div><button class="mt-3 text-sm text-blue-600 font-semibold hover:text-blue-800 add-condition-btn">+ 添加 AND/OR 条件</button>`,
+                join: (id) => `<div class="clause-header">合并 (JOIN)</div><button class="delete-btn" data-id="${id}">&times;</button><div class="flex items-center flex-wrap gap-4 text-lg"><select class="input-field !w-auto" data-key="type"><option value="INNER">合并 (INNER)</option><option value="LEFT">左合并 (LEFT)</option><option value="RIGHT">右合并 (RIGHT)</option><option value="FULL">全合并 (FULL)</option></select><span>表</span><input type="text" class="input-field !w-40" data-key="table" placeholder="另一个表名"><span>基于</span><input type="text" class="input-field !w-32" data-key="on1" placeholder="左表列"><span> = </span><input type="text" class="input-field !w-32" data-key="on2" placeholder="右表列"></div>`,
+                groupby: (id) => `<div class="clause-header">分组 (GROUP BY)</div><button class="delete-btn" data-id="${id}">&times;</button><div class="flex items-center flex-wrap gap-4 text-lg"><span>按</span><input type="text" class="input-field !w-40" data-key="column" placeholder="列名"><span>分组</span></div><div data-container="agg" class="mt-3 space-y-2"></div><div data-container="having" class="mt-2 space-y-2"></div><div class="mt-4 flex flex-wrap gap-3"><button class="secondary-button !py-2 !px-3 text-sm add-agg-btn">➕ 添加聚合计算</button><button class="secondary-button !py-2 !px-3 text-sm add-having-btn">➕ 添加分组后筛选 (HAVING)</button></div>`,
+                orderby: (id) => `<div class="clause-header">排序 (ORDER BY)</div><button class="delete-btn" data-id="${id}">&times;</button><div class="flex items-center flex-wrap gap-4 text-lg"><span>按</span><input type="text" class="input-field !w-40" data-key="column" placeholder="列名"><select class="input-field !w-auto" data-key="dir"><option value="ASC">升序</option><option value="DESC">降序</option></select><span>排序</span></div>`,
+                limit: (id) => `<div class="clause-header">限制 (LIMIT)</div><button class="delete-btn" data-id="${id}">&times;</button><div class="flex items-center flex-wrap gap-4 text-lg"><span>只返回前</span><input type="number" class="input-field !w-24" data-key="count" placeholder="数量" value="10"><span>行</span></div>`,
+                insert: () => `<section class="form-section p-6"><div class="clause-header">插入 (INSERT)</div><div class="flex items-center flex-wrap gap-4 text-lg"><span>向</span><input type="text" class="input-field !w-40" data-key="table" placeholder="表名"><span>中插入数据。</span></div><div class="mt-4 text-lg"><span>列:</span><input type="text" class="input-field w-full mt-1" data-key="columns" placeholder="col1, col2, ..."></div><div class="mt-4 text-lg"><span>值:</span><input type="text" class="input-field w-full mt-1" data-key="values" placeholder="'val1', 'val2', ..."></div></section>`,
+                update: () => `<section class="form-section p-6"><div class="clause-header">更新 (UPDATE)</div><div class="flex items-center flex-wrap gap-4 text-lg"><span>更新表</span><input type="text" class="input-field !w-40" data-key="table" placeholder="表名"><span>。</span></div><div class="mt-4 text-lg"><span>设置:</span><input type="text" class="input-field w-full mt-1" data-key="set" placeholder="col1 = 'val1', col2 = 'val2', ..."></div><div class="mt-4 text-lg"><span>筛选条件 (WHERE):</span><input type="text" class="input-field w-full mt-1" data-key="where" placeholder="condition = 'value'"></div></section>`,
+                delete: () => `<section class="form-section p-6"><div class="clause-header">删除 (DELETE)</div><div class="flex items-center flex-wrap gap-4 text-lg"><span>从表</span><input type="text" class="input-field !w-40" data-key="table" placeholder="表名"><span>中删除数据。</span></div><div class="mt-4 text-lg"><span>筛选条件 (WHERE):</span><input type="text" class="input-field w-full mt-1" data-key="where" placeholder="condition = 'value'"></div></section>`,
+                create: () => `<section class="form-section p-6"><div class="clause-header">创建表 (CREATE TABLE)</div><div class="flex items-center flex-wrap gap-4 text-lg"><span>创建名为</span><input type="text" class="input-field !w-40" data-key="table" placeholder="新表名"><span>的表。</span></div><div class="mt-4 text-lg"><span>列定义:</span><textarea class="input-field w-full mt-1 h-28" data-key="columns" placeholder="id INT PRIMARY KEY,\nname VARCHAR(100) NOT NULL,\nage INT"></textarea></div></section>`,
+            };
+
+            // --- HELPER FUNCTIONS ---
+            function showToast(message) {
+                toast.textContent = message;
+                toast.classList.remove('hidden');
+                toast.classList.add('show');
+                setTimeout(() => {
+                    toast.classList.remove('show');
+                    toast.classList.add('hidden');
+                }, 2500);
+            }
+
+            function showModal(modalElement) {
+                modalElement.classList.add('open');
+            }
+
+            function hideModal(modalElement) {
+                modalElement.classList.remove('open');
+            }
+
+            // Function to convert Chinese symbols to English
+            function convertChineseToEnglishSymbols(text) {
+                const chineseToEnglishMap = {
+                    '，': ',',
+                    '；': ';',
+                    '“': '"',
+                    '”': '"',
+                    '‘': '\'',
+                    '’': '\'',
+                    '（': '(',
+                    '）': ')',
+                    '【': '[',
+                    '】': ']',
+                    '《': '<',
+                    '》': '>',
+                    '？': '?',
+                    '！': '!',
+                    '：': ':',
+                    '、': ',', // Common for lists
+                    '—': '-',
+                    '…': '...',
+                    '·': '.', // For table.column
+                    '　': ' ' // Full-width space to normal space
+                };
+                let converted = text;
+                let convertedCount = 0;
+                for (const chineseChar in chineseToEnglishMap) {
+                    const englishChar = chineseToEnglishMap[chineseChar];
+                    const regex = new RegExp(chineseChar, 'g');
+                    if (converted.includes(chineseChar)) {
+                        converted = converted.replace(regex, englishChar);
+                        convertedCount++;
+                    }
+                }
+                if (convertedCount > 0) {
+                    showToast('已自动转换中文符号为英文');
+                }
+                return converted;
+            }
+
+            // Generic function to attach symbol conversion to an input
+            function attachSymbolConversion(inputElement) {
+                if (!inputElement) return; // Guard against null elements
+                inputElement.addEventListener('input', (event) => {
+                    const originalValue = event.target.value;
+                    const convertedValue = convertChineseToEnglishSymbols(originalValue);
+                    if (originalValue !== convertedValue) {
+                        event.target.value = convertedValue;
+                    }
+                    // Re-render builder after any input change, including conversion
+                    renderFromBuilder();
+                });
+            }
+
+            // SQL Editor Auto-Height Function
+            function adjustSqlEditorHeight() {
+                sqlEditor.style.height = 'auto'; // Reset height to recalculate
+                sqlEditor.style.height = (sqlEditor.scrollHeight) + 'px';
+            }
+
+            function addCondition(container, logic, data = {}) {
+                const conditionWrapper = document.createElement('div');
+                conditionWrapper.className = 'space-y-2';
+
+                const controlRow = document.createElement('div');
+                controlRow.className = 'flex items-start flex-wrap gap-2 text-lg';
+
+                const isFirstCondition = logic === 'WHERE' || logic === 'HAVING';
+
+                controlRow.innerHTML = `
+                    <select class="input-field !w-28 condition-logic" ${isFirstCondition ? 'disabled' : ''}>
+                        ${isFirstCondition
+                        ? `<option value="${logic}">${logic}</option>`
+                        : `<option value="AND">并且</option><option value="OR">或者</option>`
+                    }
+                    </select>
+                    <input type="text" class="input-field flex-1 min-w-[100px]" data-key="column" placeholder="列名">
+                    <select class="input-field !w-auto" data-key="op"></select>
+                    
+                    <div class="flex-1 min-w-[150px] value-input-area">
+                        <input type="text" class="input-field literal-value w-full" data-key="value" placeholder="值">
+                    </div>
+
+                    <div class="subquery-controls flex items-center self-center">
+                       <button title="切换为子查询" class="subquery-switch-btn p-1 rounded-md hover:bg-slate-200 transition-colors">
+                           <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-slate-600" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h6a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd" /></svg>
+                       </button>
+                    </div>
+
+                    <button class="text-red-500 text-2xl delete-condition-btn flex-shrink-0 self-center ${isFirstCondition ? 'hidden' : ''}">&times;</button>
+                `;
+
+                const subqueryPanel = document.createElement('div');
+                subqueryPanel.className = 'subquery-container hidden';
+                subqueryPanel.innerHTML = `
+                    <label class="text-sm font-medium text-slate-600 justify-self-end">SELECT</label>
+                    <input type="text" class="input-field" data-key="subquery_select" placeholder="子查询返回的列">
+                    <label class="text-sm font-medium text-slate-600 justify-self-end">FROM</label>
+                    <input type="text" class="input-field" data-key="subquery_from" placeholder="子查询的来源表">
+                `;
+
+                conditionWrapper.appendChild(controlRow);
+                conditionWrapper.appendChild(subqueryPanel);
+                container.appendChild(conditionWrapper);
+
+                const opSelect = controlRow.querySelector('[data-key="op"]');
+                const subquerySwitchBtn = controlRow.querySelector('.subquery-switch-btn');
+                const literalInput = controlRow.querySelector('.literal-value');
+                const logicSelect = controlRow.querySelector('.condition-logic');
+
+                const opMap = {
+                    '=': '=', '>': '>', '<': '<', '>=': '>=', '<=': '<=',
+                    'LIKE': '模糊匹配 (LIKE)', '!=': '不等于 (!=)',
+                    'IN': '包含于 (IN)', 'NOT IN': '不包含于 (NOT IN)'
+                };
+                Object.entries(opMap).forEach(([key, text]) => opSelect.add(new Option(text, key)));
+
+                const toggleSubqueryButton = () => {
+                    const isSubqueryCompatible = ['IN', 'NOT IN'].includes(opSelect.value);
+                    subquerySwitchBtn.classList.toggle('hidden', !isSubqueryCompatible);
+                    if (!isSubqueryCompatible && !subqueryPanel.classList.contains('hidden')) {
+                        subqueryPanel.classList.add('hidden');
+                        literalInput.classList.remove('hidden');
+                        subquerySwitchBtn.classList.remove('bg-sky-100'); // Remove active style
+                    }
+                };
+                opSelect.addEventListener('change', toggleSubqueryButton);
+
+                subquerySwitchBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const isSubqueryActive = subqueryPanel.classList.toggle('hidden');
+                    literalInput.classList.toggle('hidden', !isSubqueryActive);
+                    subquerySwitchBtn.classList.toggle('bg-sky-100', isSubqueryActive); // Toggle active style
+                });
+
+                controlRow.querySelector('.delete-condition-btn').addEventListener('click', () => {
+                    conditionWrapper.remove();
+                    renderFromBuilder();
+                });
+
+                // Attach symbol conversion to the column and value inputs
+                attachSymbolConversion(controlRow.querySelector('[data-key="column"]'));
+                attachSymbolConversion(literalInput);
+                attachSymbolConversion(subqueryPanel.querySelector('[data-key="subquery_select"]'));
+                attachSymbolConversion(subqueryPanel.querySelector('[data-key="subquery_from"]'));
+
+
+                // Restore state from `data` object
+                if (data) {
+                    controlRow.querySelector('[data-key="column"]').value = data.column || '';
+                    opSelect.value = data.op || '=';
+                    if (!isFirstCondition) logicSelect.value = data.logic || 'AND';
+
+                    if (data.valueType === 'subquery') {
+                        literalInput.classList.add('hidden');
+                        subqueryPanel.classList.remove('hidden');
+                        subquerySwitchBtn.classList.add('bg-sky-100'); // Set active style
+                        subqueryPanel.querySelector('[data-key="subquery_select"]').value = data.subquery?.select || '';
+                        subqueryPanel.querySelector('[data-key="subquery_from"]').value = data.subquery?.from || '';
+                    } else {
+                        literalInput.value = data.value || '';
+                    }
+                }
+                toggleSubqueryButton(); // Initial check when the element is created or loaded
+            }
+
+            function addAggregation(section, data = {}) {
+                const container = section.querySelector('[data-container="agg"]');
+                const el = document.createElement('div');
+                el.className = 'flex items-center flex-wrap gap-2 text-lg';
+                el.innerHTML = `<span>计算</span><select class="input-field !w-auto" data-key="agg_func"></select><span>(</span><input type="text" class="input-field !w-24" data-key="agg_col" placeholder="*" value="${data.col || '*'}"><span>)</span><span>为</span><input type="text" class="input-field !w-24" data-key="agg_alias" placeholder="新列名" value="${data.alias || ''}"><button class="text-red-500 text-2xl">&times;</button>`;
+                const funcSelect = el.querySelector('[data-key="agg_func"]');
+                const funcMap = { 'COUNT': '计数', 'SUM': '求和', 'AVG': '平均值', 'MIN': '最小值', 'MAX': '最大值' };
+                Object.entries(funcMap).forEach(([key, text]) => funcSelect.add(new Option(text, key)));
+                funcSelect.value = data.func || 'COUNT';
+                el.querySelector('button').addEventListener('click', () => { el.remove(); renderFromBuilder(); });
+                container.appendChild(el);
+
+                // Attach symbol conversion to aggregation inputs
+                attachSymbolConversion(el.querySelector('[data-key="agg_col"]'));
+                attachSymbolConversion(el.querySelector('[data-key="agg_alias"]'));
+            }
+
+            function addClauseCard(type, clauseData = null) {
+                const id = clauseData ? clauseData.id : clauseIdCounter++;
+                const section = document.createElement('section');
+                section.className = 'form-section clause-card p-6 mb-6';
+                section.dataset.clauseId = id;
+                section.innerHTML = clauseTemplates[type](id);
+                optionalSectionsContainer.appendChild(section);
+                section.querySelector('.delete-btn').addEventListener('click', () => {
+                    currentState.clauses = currentState.clauses.filter(c => c.id !== id);
+                    section.remove();
+                    renderFromBuilder();
+                });
+
+                if (type === 'where') {
+                    section.querySelector('.add-condition-btn').addEventListener('click', () => addCondition(section.querySelector('[data-container="conditions"]'), 'AND/OR'));
+                    const container = section.querySelector('[data-container="conditions"]');
+                    if (clauseData?.data?.conditions) {
+                        clauseData.data.conditions.forEach((cond, i) => addCondition(container, i === 0 ? 'WHERE' : cond.logic, cond));
+                    } else { addCondition(container, 'WHERE'); }
+                }
+                if (type === 'groupby') {
+                    section.querySelector('.add-agg-btn').addEventListener('click', () => addAggregation(section));
+                    section.querySelector('.add-having-btn').addEventListener('click', () => {
+                        const havingContainer = section.querySelector('[data-container="having"]');
+                        if (!clauseData.data.havingConditions) clauseData.data.havingConditions = [];
+                        addCondition(havingContainer, clauseData.data.havingConditions.length === 0 ? 'HAVING' : 'AND/OR');
+                    });
+                    if (clauseData?.data) {
+                        // Attach symbol conversion to groupby column
+                        const groupbyColInput = section.querySelector('[data-key="column"]');
+                        if (groupbyColInput) {
+                            attachSymbolConversion(groupbyColInput);
+                            groupbyColInput.value = clauseData.data.column || '';
+                        }
+                        clauseData.data.aggregations?.forEach(agg => addAggregation(section, agg));
+                        clauseData.data.havingConditions?.forEach((cond, i) => addCondition(section.querySelector('[data-container="having"]'), i === 0 ? 'HAVING' : 'AND/OR', cond));
+                    } else { // Ensure conversion is attached even if no initial data
+                        const groupbyColInput = section.querySelector('[data-key="column"]');
+                        if (groupbyColInput) {
+                            attachSymbolConversion(groupbyColInput);
+                        }
+                    }
+                }
+                if (clauseData && clauseData.type !== 'where' && clauseData.type !== 'groupby') {
+                    section.querySelectorAll('[data-key]').forEach(el => {
+                        if (clauseData.data[el.dataset.key]) el.value = clauseData.data[el.dataset.key];
+                        // Attach symbol conversion to all data-key inputs in generic clauses
+                        if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+                            attachSymbolConversion(el);
+                        }
+                    });
+                } else if (type !== 'where' && type !== 'groupby') { // For newly added generic clauses
+                    section.querySelectorAll('[data-key]').forEach(el => {
+                        if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+                            attachSymbolConversion(el);
+                        }
+                    });
+                }
+            }
+
+            // --- HISTORY & STATE MANAGEMENT ---
+            function saveHistory() {
+                localStorage.setItem('sqlbuilder_history_v15', JSON.stringify(history));
+            }
+
+            // Function to save the current UI state to the appropriate state object
+            function saveCurrentUIState() {
+                if (currentState.type === 'dql') {
+                    dqlState.from = fromInput.value.trim();
+                    dqlState.select = selectInput.value.trim() || '*';
+                    const updatedClauses = [];
+                    optionalSectionsContainer.querySelectorAll('.clause-card').forEach(section => {
+                        const id = parseInt(section.dataset.clauseId);
+                        const clause = currentState.clauses.find(c => c.id === id);
+                        if (!clause) return; // Should not happen if clauses are managed correctly
+
+                        clause.data = clause.data || {};
+                        if (clause.type === 'where' || (clause.type === 'groupby' && section.querySelector('[data-container="having"]'))) {
+                            const isHaving = clause.type === 'groupby';
+                            const containerKey = isHaving ? 'havingConditions' : 'conditions';
+                            const containerSelector = isHaving ? '[data-container="having"]' : '[data-container="conditions"]';
+                            const conditionContainer = section.querySelector(containerSelector);
+
+                            if (conditionContainer && conditionContainer.children.length > 0) {
+                                clause.data[containerKey] = Array.from(conditionContainer.children).map(conditionWrapper => {
+                                    const controlRow = conditionWrapper.querySelector('.flex');
+                                    const subqueryPanel = conditionWrapper.querySelector('.subquery-container');
+                                    const isSubquery = !subqueryPanel.classList.contains('hidden');
+
+                                    const common = {
+                                        logic: controlRow.querySelector('.condition-logic').value,
+                                        column: controlRow.querySelector('[data-key="column"]').value.trim(),
+                                        op: controlRow.querySelector('[data-key="op"]').value,
+                                    };
+
+                                    if (isSubquery) {
+                                        return {
+                                            ...common,
+                                            valueType: 'subquery',
+                                            subquery: {
+                                                select: subqueryPanel.querySelector('[data-key="subquery_select"]').value.trim(),
+                                                from: subqueryPanel.querySelector('[data-key="subquery_from"]').value.trim(),
+                                            }
+                                        };
+                                    } else {
+                                        return {
+                                            ...common,
+                                            valueType: 'literal',
+                                            value: controlRow.querySelector('[data-key="value"]').value.trim()
+                                        };
+                                    }
+                                });
+                            } else {
+                                delete clause.data[containerKey];
+                            }
+                        }
+                        if (clause.type === 'groupby') {
+                            clause.data.column = section.querySelector('[data-key="column"]').value.trim();
+                            const aggContainer = section.querySelector('[data-container="agg"]');
+                            if (aggContainer && aggContainer.children.length > 0) {
+                                clause.data.aggregations = Array.from(aggContainer.children).map(el => ({ func: el.querySelector('[data-key="agg_func"]').value, col: el.querySelector('[data-key="agg_col"]').value.trim(), alias: el.querySelector('[data-key="agg_alias"]').value.trim() }));
+                            } else { delete clause.data.aggregations; }
+                        }
+                        if (clause.type !== 'where' && clause.type !== 'groupby') {
+                            section.querySelectorAll('[data-key]').forEach(el => { clause.data[el.dataset.key] = el.value.trim(); });
+                        }
+                        updatedClauses.push(clause);
+                    });
+                    dqlState.clauses = updatedClauses;
+                    // Preserve other properties like name, description, id for dqlState
+                    dqlState.name = currentState.name;
+                    dqlState.description = currentState.description;
+                    dqlState.id = currentState.id;
+
+                } else { // DML/DDL state
+                    const container = dmlBuilderContainer.querySelector('.form-section');
+                    if (container) {
+                        const currentDMLData = {};
+                        container.querySelectorAll('[data-key]').forEach(el => {
+                            currentDMLData[el.dataset.key] = el.value.trim();
+                        });
+                        dmlState[currentState.dmlType].data = currentDMLData;
+                        // Preserve other properties like name, description, id for the specific dmlState
+                        dmlState[currentState.dmlType].name = currentState.name;
+                        dmlState[currentState.dmlType].description = currentState.description;
+                        dmlState[currentState.dmlType].id = currentState.id;
+                    }
+                }
+            }
+
+
+            function loadState(newState, fromHistory = false) {
+                // Before loading new state, save the current UI's data
+                saveCurrentUIState();
+
+                currentState = JSON.parse(JSON.stringify(newState)); // Deep copy the new state
+                isDemoActive = !!currentState.isDemo;
+
+                if (isDemoActive) {
+                    renderDemoBaseTables();
+                } else if (demoBaseTablesSection) {
+                    demoBaseTablesSection.classList.add('hidden');
+                }
+
+                if (currentState.id) {
+                    saveBtn.textContent = '💾 更新';
+                } else {
+                    saveBtn.textContent = '💾 保存';
+                }
+
+                // Render the UI based on the new currentState
+                if (currentState.type === 'dml' || currentState.type === 'ddl') {
+                    renderDMLUI(currentState.dmlType, fromHistory);
+                } else {
+                    renderDQLUI(fromHistory);
+                }
+                generateAndRenderOutput();
+
+                // 恢复草稿内容
+                setCurrentNotebook(newState.notebook || '');
+            }
+
+            // Resets the current form, optionally setting a specific type (DQL, or a DML type)
+            function resetState(type = 'dql', dmlSpecificType = 'insert') {
+                isDemoActive = false;
+                if (demoBaseTablesSection) {
+                    demoBaseTablesSection.classList.add('hidden');
+                }
+
+                // Create a fresh base state based on the type
+                let emptyState;
+                if (type === 'dql') {
+                    emptyState = { id: null, type: 'dql', name: '', description: '', from: '', select: '*', clauses: [] };
+                } else {
+                    // For DML/DDL, grab the template for that specific DML type
+                    emptyState = JSON.parse(JSON.stringify(dmlState[dmlSpecificType])); // Start with its default template
+                    emptyState.id = null; // Ensure new query doesn't carry old ID
+                    emptyState.name = '';
+                    emptyState.description = '';
+                }
+                loadState(emptyState); // Load this empty state into the UI
+            }
+
+
+            // --- RENDER & GENERATION LOGIC ---
+            function renderFromBuilder() {
+                // Update the current state object with UI values
+                saveCurrentUIState();
+                generateAndRenderOutput();
+            }
+
+            function generateSql(stateObj) {
+                if (!stateObj) return '';
+                let sql = '';
+                if (stateObj.type === 'dml' || stateObj.type === 'ddl') {
+                    const d = stateObj.data;
+                    switch (stateObj.dmlType) {
+                        case 'insert': sql = `INSERT INTO \`${d.table || '...'}\` (${d.columns || '...'}) \nVALUES (${d.values || '...'});`; break;
+                        case 'update': sql = `UPDATE \`${d.table || '...'}\` \nSET ${d.set || '...'} \nWHERE ${d.where || '...'};`; break;
+                        case 'delete': sql = `DELETE FROM \`${d.table || '...'}\` \nWHERE ${d.where || '...'};`; break;
+                        case 'create': sql = `CREATE TABLE \`${d.table || '...'}\` (\n  ${d.columns ? d.columns.split('\n').map(line => line.trim()).filter(Boolean).join(',\n  ') : '...'}\n);`; break;
+                    }
+                } else {
+                    let mainSelect = stateObj.select || '*';
+                    let fromClause = `FROM \`${stateObj.from || 'your_table'}\``;
+                    if (isDemoActive && stateObj.from && demoData.mockDb[stateObj.from]) {
+                        fromClause += ` AS ${demoData.mockDb[stateObj.from].alias || ''}`;
+                    }
+
+                    let clausesSql = { join: '', where: '', groupby: '', having: '', orderby: '', limit: '' };
+                    stateObj.clauses?.forEach(clause => {
+                        const data = clause.data;
+                        const joinTable = data.table || '...';
+                        switch (clause.type) {
+                            case 'join':
+                                let joinAlias = '';
+                                if (isDemoActive && joinTable && demoData.mockDb[joinTable]) {
+                                    joinAlias = ` AS ${demoData.mockDb[joinTable].alias || ''}`;
+                                }
+                                clausesSql.join += `\n${data.type || 'INNER'} JOIN \`${joinTable}\`${joinAlias} ON ${data.on1 || 'id'} = ${data.on2 || 'id'}`;
+                                break;
+                            case 'where':
+                                if (data.conditions && data.conditions.length > 0) {
+                                    clausesSql.where += `\nWHERE `;
+                                    clausesSql.where += data.conditions.map((cond, index) => {
+                                        let conditionStr = '';
+                                        const logic = index === 0 ? '' : ` ${cond.logic} `;
+                                        if (cond.valueType === 'subquery' && cond.subquery) {
+                                            conditionStr = `${logic}${cond.column || 'column'} ${cond.op} (\n    SELECT ${cond.subquery.select || '...'}\n    FROM ${cond.subquery.from || '...'}\n)`;
+                                        } else {
+                                            const value = isNaN(cond.value) || cond.value === '' ? `'${cond.value || 'value'}'` : cond.value;
+                                            conditionStr = `${logic}${cond.column || 'column'} ${cond.op} ${value}`;
+                                        }
+                                        return conditionStr;
+                                    }).join('');
+                                }
+                                break;
+                            case 'groupby':
+                                if (data.column) clausesSql.groupby = `\nGROUP BY ${data.column}`;
+                                let aggSelects = [];
+                                data.aggregations?.forEach(agg => { aggSelects.push(`${agg.func}(${agg.col || '*'}) AS \`${agg.alias || 'total'}\``); });
+                                if (aggSelects.length > 0) {
+                                    const baseSelect = stateObj.select === '*' ? (data.column ? `${data.column}` : '') : stateObj.select;
+                                    mainSelect = [baseSelect, ...aggSelects].filter(Boolean).join(', ');
+                                }
+                                if (data.havingConditions && data.havingConditions.length > 0) {
+                                    clausesSql.having = `\nHAVING `;
+                                    clausesSql.having += data.havingConditions.map((cond, index) => {
+                                        const logic = index === 0 ? '' : ` ${cond.logic} `;
+                                        const value = isNaN(cond.value) ? `'${cond.value || 'value'}'` : cond.value;
+                                        return `${logic}${cond.column || 'agg_func'}(...) ${cond.op} ${value}`;
+                                    }).join('');
+                                }
+                                break;
+                            case 'orderby': clausesSql.orderby = `\nORDER BY ${data.column || 'column'} ${data.dir || 'ASC'}`; break;
+                            case 'limit': clausesSql.limit = `\nLIMIT ${data.count || 10}`; break;
+                        }
+                    });
+                    sql = `SELECT ${mainSelect}\n${fromClause}${clausesSql.join}${clausesSql.where}${clausesSql.groupby}${clausesSql.having}${clausesSql.orderby}${clausesSql.limit};`;
+                }
+                return sql;
+            }
+
+            function renderDataPreview(result) {
+                dataPreviewTable.innerHTML = '';
+                if (!result || !result.headers || !result.rows || result.rows.length === 0) {
+                    dataPreviewTable.innerHTML = '<thead><tr><th>没有可预览的数据。</th></tr></thead>';
+                    return;
+                }
+
+                const thead = document.createElement('thead');
+                const headerRow = document.createElement('tr');
+                result.headers.forEach(headerText => {
+                    const th = document.createElement('th');
+                    th.textContent = headerText;
+                    headerRow.appendChild(th);
+                });
+                thead.appendChild(headerRow);
+                dataPreviewTable.appendChild(thead);
+
+                const tbody = document.createElement('tbody');
+                result.rows.forEach(rowData => {
+                    const tr = document.createElement('tr');
+                    result.headers.forEach(header => {
+                        const td = document.createElement('td');
+                        // Ensure the correct key is used (remove alias if present)
+                        const rawHeader = header.split('.').pop();
+                        td.textContent = rowData[rawHeader] !== undefined ? rowData[rawHeader] : rowData[header];
+                        tr.appendChild(td);
+                    });
+                    tbody.appendChild(tr);
+                });
+                dataPreviewTable.appendChild(tbody);
+            }
+
+            function generateAndRenderOutput() {
+                sqlEditor.value = generateSql(currentState);
+                adjustSqlEditorHeight(); // Adjust height after setting value
+
+                let summary = '';
+                if (currentState.type === 'dml' || currentState.type === 'ddl') {
+                    const d = currentState.data;
+                    switch (currentState.dmlType) {
+                        case 'insert': summary = `首先，向 \`${d.table || '...'}\` 表中插入新数据。`; break;
+                        case 'update': summary = `首先，更新 \`${d.table || '...'}\` 表中符合条件的数据。`; break;
+                        case 'delete': summary = `首先，从 \`${d.table || '...'}\` 表中删除符合条件的数据。`; break;
+                        case 'create': summary = `首先，创建一个名为 \`${d.table || '...'}\` 的新表。`; break;
+                    }
+                } else {
+                    summary = `首先，从 \`${currentState.from || '...'}\` 表中选取 \`${currentState.select || '...'}\` 列`;
+                    const clauseDescriptions = [];
+                    currentState.clauses.forEach(clause => {
+                        const data = clause.data;
+                        switch (clause.type) {
+                            case 'join': clauseDescriptions.push(`与 \`${data.table}\` 表进行 ${data.type === 'INNER' ? '内部合并' : (data.type === 'LEFT' ? '左合并' : '合并')}`); break;
+                            case 'where': clauseDescriptions.push(`筛选出符合条件的数据`); break;
+                            case 'groupby': clauseDescriptions.push(`按 \`${data.column}\` 进行分组统计`); break;
+                            case 'orderby': clauseDescriptions.push(`将结果按 \`${data.column}\` ${data.dir === 'ASC' ? '升序' : '降序'}排列`); break;
+                            case 'limit': clauseDescriptions.push(`只显示前 ${data.count} 条`); break;
+                        }
+                    });
+                    if (clauseDescriptions.length > 0) {
+                        summary += '，然后' + clauseDescriptions.join('，接着');
+                    }
+                    summary += '。';
+                }
+                summaryTextEl.textContent = summary;
+
+                if (isDemoActive) {
+                    dataPreviewSection.classList.remove('hidden');
+                    const previewResult = runDemoQuery(currentState);
+                    renderDataPreview(previewResult);
+                } else {
+                    dataPreviewSection.classList.add('hidden');
+                }
+            }
+
+            // --- UI SWITCHING ---
+            function renderDQLUI(fromLoad = false) {
+                // Hide DML/DDL elements
+                dmlBuilderContainer.classList.add('hidden');
+                dmlBuilderContainer.innerHTML = '';
+                dmlActions.classList.add('hidden');
+
+                // Show DQL elements
+                queryBuilderContainer.classList.remove('hidden');
+                dqlActions.classList.remove('hidden');
+
+                toggleDQLBtn.classList.add('active');
+                toggleDMLBtn.classList.remove('active');
+
+                // Populate DQL UI with dqlState
+                fromInput.value = dqlState.from || '';
+                selectInput.value = dqlState.select || '*';
+                optionalSectionsContainer.innerHTML = '';
+                clauseIdCounter = 0; // Reset counter for UI rendering
+
+                if (dqlState.clauses) {
+                    // Deep copy clauses to avoid modifying the original state directly
+                    const clausesToRender = JSON.parse(JSON.stringify(dqlState.clauses));
+                    clausesToRender.forEach(clause => {
+                        clause.id = clauseIdCounter++; // Assign new IDs for current session
+                        addClauseCard(clause.type, clause);
+                    });
+                    // Ensure currentState.clauses reflects the rendered clauses (with new IDs)
+                    currentState.clauses = clausesToRender;
+                }
+                generateAndRenderOutput(); // Update SQL and summary
+            }
+
+            function renderDMLUI(type, fromLoad = false) {
+                // Hide DQL elements
+                queryBuilderContainer.classList.add('hidden');
+                optionalSectionsContainer.innerHTML = ''; // Clear DQL clauses
+                dqlActions.classList.add('hidden');
+
+                // Show DML/DDL elements
+                dmlBuilderContainer.classList.remove('hidden');
+                dmlActions.classList.remove('hidden');
+
+                toggleDMLBtn.classList.add('active');
+                toggleDQLBtn.classList.remove('active');
+
+                // Load the specific DML/DDL template and populate
+                dmlBuilderContainer.innerHTML = ''; // Clear existing DML content
+                dmlBuilderContainer.appendChild(document.createRange().createContextualFragment(clauseTemplates[type]()));
+
+                const currentDMLTypeState = dmlState[type];
+                currentState = currentDMLTypeState; // Set currentState to the active DML type
+
+                // Populate the new DML UI with saved data for that type
+                const container = dmlBuilderContainer.querySelector('.form-section');
+                if (container) {
+                    container.querySelectorAll('[data-key]').forEach(el => {
+                        if (currentDMLTypeState.data && currentDMLTypeState.data[el.dataset.key] !== undefined) {
+                            el.value = currentDMLTypeState.data[el.dataset.key];
+                        }
+                        attachSymbolConversion(el); // Re-attach conversion
+                    });
+                }
+                generateAndRenderOutput(); // Update SQL and summary
+            }
+
+
+            // --- MAIN EVENT LISTENERS ---
+            document.getElementById('builder-form').addEventListener('input', renderFromBuilder);
+
+            document.querySelectorAll('.secondary-button[data-clause]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    // If currently in DML mode, switch to DQL and then add clause
+                    if (currentState.type !== 'dql') {
+                        saveCurrentUIState(); // Save current DML state before switching
+                        currentState = dqlState; // Set current state to DQL
+                        renderDQLUI(); // Render DQL UI (will load dqlState)
+                    }
+                    const type = btn.dataset.clause;
+                    const id = clauseIdCounter++;
+                    const newClause = { id, type, data: {} };
+                    currentState.clauses.push(newClause);
+                    addClauseCard(type, newClause);
+                    renderFromBuilder();
+                });
+            });
+
+            document.querySelectorAll('.secondary-button[data-dml]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const type = btn.dataset.dml;
+                    saveCurrentUIState(); // Save current DQL or DML state before switching
+                    // Update currentState to point to the correct DML state object
+                    currentState = dmlState[type];
+                    renderDMLUI(type);
+                });
+            });
+
+            toggleDQLBtn.addEventListener('click', () => {
+                saveCurrentUIState(); // Save current DML state
+                currentState = dqlState; // Switch active state to DQL
+                renderDQLUI();
+            });
+
+            toggleDMLBtn.addEventListener('click', () => {
+                saveCurrentUIState(); // Save current DQL state
+                // Determine which DML type to load (prefer previous, else default to 'insert')
+                const activeDMLType = currentState.dmlType || 'insert';
+                currentState = dmlState[activeDMLType]; // Switch active state to the specific DML type
+                renderDMLUI(activeDMLType);
+            });
+
+
+            function copyToClipboard(text, button) {
+                navigator.clipboard.writeText(text).then(() => {
+                    if (button) {
+                        const originalText = button.textContent;
+                        button.textContent = '已复制!';
+                        setTimeout(() => { button.textContent = originalText; }, 2000);
+                    }
+                    showToast('SQL 已复制到剪贴板！');
+                }).catch(err => {
+                    console.error('Failed to copy: ', err);
+                    showToast('复制失败，请手动复制。');
+                });
+            }
+            copyBtn.addEventListener('click', () => copyToClipboard(sqlEditor.value, copyBtn));
+
+            saveBtn.addEventListener('click', () => {
+                showModal(saveModal);
+                const nameInput = document.getElementById('query-name');
+                if (!currentState.name && !currentState.id) {
+                    nameInput.value = `查询 - ${new Date().toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}`;
+                } else {
+                    nameInput.value = currentState.name || '';
+                }
+                document.getElementById('query-desc').value = currentState.description || '';
+            });
+            cancelSaveBtn.addEventListener('click', () => hideModal(saveModal));
+
+            saveForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                const name = document.getElementById('query-name').value;
+                const description = document.getElementById('query-desc').value;
+
+                // Make sure currentState reflects the latest UI input before saving
+                saveCurrentUIState();
+
+                const queryToSave = JSON.parse(JSON.stringify(currentState)); // Deep copy for saving
+                queryToSave.name = name;
+                queryToSave.description = description;
+                queryToSave.sql = sqlEditor.value;
+                queryToSave.timestamp = Date.now(); // Add timestamp for sorting/identification
+                queryToSave.notebook = getCurrentNotebook(); // 保存草稿内容
+
+                const existingIndex = currentState.id ? history.findIndex(h => h.id === currentState.id) : -1;
+
+                if (existingIndex > -1) {
+                    queryToSave.id = currentState.id; // Keep existing ID
+                    history[existingIndex] = queryToSave;
+                    showToast('查询已更新！');
+                } else {
+                    queryToSave.id = Date.now(); // New unique ID
+                    history.unshift(queryToSave); // Add to beginning
+                    showToast('查询已保存！');
+                }
+
+                saveHistory();
+                renderHistoryList();
+                hideModal(saveModal);
+
+                // Update current state to reflect the save/update (especially the ID)
+                currentState.id = queryToSave.id;
+                currentState.name = name;
+                currentState.description = description;
+                saveBtn.textContent = '💾 更新';
+            });
+
+            historyToggle.addEventListener('click', () => {
+                historySidebar.classList.toggle('open');
+                historyOverlay.classList.toggle('open');
+            });
+            historyCloseBtn.addEventListener('click', () => {
+                historySidebar.classList.remove('open');
+                historyOverlay.classList.remove('open');
+            });
+            historyOverlay.addEventListener('click', () => {
+                historySidebar.classList.remove('open');
+                historyOverlay.classList.remove('open');
+            });
+
+            newQueryBtn.addEventListener('click', () => {
+                // When starting a new query, reset *both* dqlState and dmlState to their defaults
+                // and then load the default DQL UI.
+                dqlState = { id: null, type: 'dql', name: '', description: '', from: '', select: '*', clauses: [] };
+                dmlState = {
+                    insert: { type: 'dml', dmlType: 'insert', data: { table: '', columns: '', values: '' } },
+                    update: { type: 'dml', dmlType: 'update', data: { table: '', set: '', where: '' } },
+                    delete: { type: 'dml', dmlType: 'delete', data: { table: '', where: '' } },
+                    create: { type: 'ddl', dmlType: 'create', data: { table: '', columns: '' } }
+                };
+                currentState = dqlState; // Set current state to the fresh DQL state
+                renderDQLUI(); // Render DQL UI with the fresh state
+                showToast('已新建查询');
+            });
+
+            liveDemoBtn.addEventListener('click', () => {
+                const demoState = JSON.parse(JSON.stringify(demoData.state));
+                demoState.isDemo = true;
+                loadState(demoState, true); // Pass true to fromHistory for demo as well
+                historySidebar.classList.remove('open');
+                historyOverlay.classList.remove('open');
+                showToast('已加载演示查询');
+            });
+
+            function renderHistoryList() {
+                historyList.innerHTML = '';
+                if (history.length === 0) {
+                    historyList.innerHTML = '<p class="p-4 text-center text-slate-500">还没有历史记录。</p>';
+                    return;
+                }
+                // Sort history by timestamp descending (newest first)
+                history.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+
+                history.forEach(item => {
+                    const el = document.createElement('div');
+                    el.className = 'p-3 border border-slate-200 rounded-md hover:bg-slate-50 group';
+                    el.innerHTML = `<div class="flex justify-between items-start">
+                        <div class="flex-1 overflow-hidden cursor-pointer" data-id="${item.id}">
+                            <h4 class="font-bold text-slate-800 group-hover:text-blue-600 truncate">${item.name}</h4>
+                            <p class="text-sm text-slate-600 truncate">${item.description || '无描述'}</p>
+                        </div>
+                        <div class="flex items-center ml-2 space-x-3">
+                            <button class="text-slate-500 hover:text-blue-600 history-action-btn copy-history-btn" title="复制SQL">复制 SQL</button>
+                            <button class="text-red-500 hover:text-red-700 history-action-btn delete-history-btn" title="删除">删除</button>
+                        </div>
+                    </div>`;
+                    el.querySelector('[data-id]').addEventListener('click', () => {
+                        const itemToLoad = history.find(h => h.id === item.id);
+                        if (itemToLoad) {
+                            loadState(itemToLoad, true); // Pass true to fromHistory
+                            historySidebar.classList.remove('open');
+                            historyOverlay.classList.remove('open');
+                        }
+                    });
+                    el.querySelector('.delete-history-btn').addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        deleteConfirmText.textContent = `您确定要删除查询 "${item.name}" 吗？此操作无法撤销。`;
+                        confirmDeleteBtn.dataset.id = item.id;
+                        showModal(deleteConfirmModal);
+                    });
+                    el.querySelector('.copy-history-btn').addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const itemToCopy = history.find(h => h.id === item.id);
+                        const sqlToCopy = itemToCopy.sql || generateSql(itemToCopy);
+                        copyToClipboard(sqlToCopy, e.currentTarget);
+                    });
+                    historyList.appendChild(el);
+                });
+            }
+
+            // --- DELETE MODAL LISTENERS ---
+            cancelDeleteBtn.addEventListener('click', () => hideModal(deleteConfirmModal));
+            confirmDeleteBtn.addEventListener('click', () => {
+                const idToDelete = parseInt(confirmDeleteBtn.dataset.id);
+                history = history.filter(h => h.id !== idToDelete);
+                saveHistory();
+                renderHistoryList();
+                hideModal(deleteConfirmModal);
+                showToast('查询已删除。');
+                // If the deleted query was the one currently loaded, reset the main builder
+                if (currentState.id === idToDelete) {
+                    resetState('dql'); // Reset to a fresh DQL state
+                }
+            });
+
+
+            // --- DEMO-SPECIFIC FUNCTIONS ---
+            function renderDemoBaseTables() {
+                if (!demoBaseTablesContainer || !demoBaseTablesSection) return;
+                demoBaseTablesContainer.innerHTML = '';
+                Object.entries(demoData.mockDb).forEach(([tableName, tableData]) => {
+                    const tableContainer = document.createElement('div');
+                    tableContainer.className = 'demo-table-container';
+                    const tableTitle = document.createElement('h3');
+                    tableTitle.className = 'text-xl font-bold mb-3 text-slate-800';
+                    tableTitle.textContent = `表: ${tableName}`;
+                    const table = document.createElement('table');
+                    table.className = 'demo-table';
+
+                    const thead = document.createElement('thead');
+                    const headerRow = document.createElement('tr');
+                    tableData.columns.forEach(col => {
+                        const th = document.createElement('th');
+                        th.textContent = col;
+                        headerRow.appendChild(th);
+                    });
+                    thead.appendChild(headerRow);
+                    table.appendChild(thead);
+
+                    const tbody = document.createElement('tbody');
+                    tableData.data.forEach(row => {
+                        const tr = document.createElement('tr');
+                        tableData.columns.forEach(col => {
+                            const td = document.createElement('td');
+                            td.textContent = row[col];
+                            tr.appendChild(td);
+                        });
+                        tbody.appendChild(tr);
+                    });
+                    table.appendChild(tbody);
+
+                    tableContainer.appendChild(tableTitle);
+                    tableContainer.appendChild(table);
+                    demoBaseTablesContainer.appendChild(tableContainer);
+                });
+                demoBaseTablesSection.classList.remove('hidden');
+            }
+
+            function runDemoQuery(queryState) {
+                try {
+                    if (!queryState.from || !demoData.mockDb[queryState.from]) return { headers: ['错误'], rows: [{ '错误': '找不到起始数据表' }] };
+
+                    // Start with a deep copy of the primary table's data
+                    let currentData = JSON.parse(JSON.stringify(demoData.mockDb[queryState.from].data));
+                    let currentHeaders = demoData.mockDb[queryState.from].columns.map(col => `${demoData.mockDb[queryState.from].alias || queryState.from}.${col}`);
+
+
+                    // Apply JOINs
+                    queryState.clauses.filter(c => c.type === 'join').forEach(clause => {
+                        const joinTableInfo = demoData.mockDb[clause.data.table];
+                        if (!joinTableInfo) return; // Skip if table not found in mock DB
+                        const joinData = joinTableInfo.data;
+
+                        // Extract column names without aliases for comparison
+                        const [leftOnColName] = clause.data.on1.split('.').slice(-1);
+                        const [rightOnColName] = clause.data.on2.split('.').slice(-1);
+
+                        const newJoinedData = [];
+
+                        // Combine headers from both tables, ensuring uniqueness and handling aliases
+                        const newHeaders = [...new Set([
+                            ...currentHeaders.map(h => h.includes('.') ? h : `${queryState.from}.${h}`), // Ensure primary table has alias if needed
+                            ...joinTableInfo.columns.map(col => `${joinTableInfo.alias || clause.data.table}.${col}`)
+                        ])];
+
+                        currentData.forEach(leftRow => {
+                            let matched = false;
+                            joinData.forEach(rightRow => {
+                                // Direct property access for comparison after extracting column name
+                                if (leftRow[leftOnColName] === rightRow[rightOnColName]) {
+                                    newJoinedData.push({ ...leftRow, ...rightRow });
+                                    matched = true;
+                                }
+                            });
+                            if (!matched && clause.data.type === 'LEFT') {
+                                // For LEFT JOIN, if no match, include left row with nulls for right table columns
+                                const nullRightRow = {};
+                                joinTableInfo.columns.forEach(col => {
+                                    nullRightRow[col] = null; // Or undefined, depending on desired output
+                                });
+                                newJoinedData.push({ ...leftRow, ...nullRightRow });
+                            }
+                            // INNER JOIN: only matched rows are pushed
+                        });
+                        currentData = newJoinedData;
+                        currentHeaders = newHeaders; // Update headers after join
+                    });
+
+                    // Apply WHERE clause
+                    const whereClause = queryState.clauses.find(c => c.type === 'where');
+                    if (whereClause && whereClause.data.conditions && whereClause.data.conditions.length > 0) {
+                        currentData = currentData.filter(row => {
+                            // Conditions are evaluated with AND logic for simplicity in demo
+                            return whereClause.data.conditions.every(cond => {
+                                const colName = cond.column.split('.').pop(); // Get actual column name
+                                const rowValue = row[colName];
+
+                                if (rowValue === undefined) return false;
+
+                                let condValue;
+                                if (cond.valueType === 'subquery' && cond.subquery) {
+                                    // Simplified subquery: assume it returns a single column list of values
+                                    // This is a very basic simulation, not a full SQL engine
+                                    const subqueryResult = runDemoQuery({
+                                        type: 'dql',
+                                        from: cond.subquery.from,
+                                        select: cond.subquery.select,
+                                        clauses: [] // No nested subqueries for simplicity
+                                    });
+                                    if (subqueryResult.rows && subqueryResult.rows.length > 0) {
+                                        // Extract values from the first (and only) selected column
+                                        const subqueryValues = subqueryResult.rows.map(r => Object.values(r)[0]);
+                                        if (cond.op === 'IN') return subqueryValues.includes(rowValue);
+                                        if (cond.op === 'NOT IN') return !subqueryValues.includes(rowValue);
+                                    }
+                                    return false; // If subquery fails or returns no data for IN/NOT IN
+                                } else {
+                                    condValue = isNaN(cond.value) || cond.value === '' ? cond.value : parseFloat(cond.value);
+                                }
+
+                                switch (cond.op) {
+                                    case '>': return rowValue > condValue;
+                                    case '<': return rowValue < condValue;
+                                    case '=': return rowValue == condValue;
+                                    case '!=': return rowValue != condValue;
+                                    case '>=': return rowValue >= condValue;
+                                    case '<=': return rowValue <= condValue;
+                                    case 'LIKE':
+                                        const regex = new RegExp(condValue.replace(/%/g, '.*'), 'i'); // Case-insensitive LIKE
+                                        return regex.test(rowValue);
+                                    case 'IN': return (Array.isArray(condValue) ? condValue : condValue.split(',').map(s => s.trim().replace(/^'|'$/g, ''))).includes(rowValue);
+                                    case 'NOT IN': return !(Array.isArray(condValue) ? condValue : condValue.split(',').map(s => s.trim().replace(/^'|'$/g, ''))).includes(rowValue);
+                                    default: return true;
+                                }
+                            });
+                        });
+                    }
+
+                    // Apply GROUP BY and Aggregations (Simplified)
+                    const groupByClause = queryState.clauses.find(c => c.type === 'groupby');
+                    if (groupByClause && groupByClause.data.column) {
+                        const groupColName = groupByClause.data.column.split('.').pop();
+                        const groupedData = {};
+
+                        currentData.forEach(row => {
+                            const groupKey = row[groupColName];
+                            if (!groupedData[groupKey]) {
+                                groupedData[groupKey] = [];
+                            }
+                            groupedData[groupKey].push(row);
+                        });
+
+                        let newResultData = [];
+                        let newResultHeaders = [groupByClause.data.column]; // Start with group-by column
+
+                        if (groupByClause.data.aggregations && groupByClause.data.aggregations.length > 0) {
+                            groupByClause.data.aggregations.forEach(agg => {
+                                newResultHeaders.push(`${agg.alias || agg.func.toLowerCase() + '_' + agg.col.split('.').pop()}`);
+                            });
+                        } else {
+                            // If no aggregations, but GROUP BY is present, select all distinct group-by column values
+                            Object.keys(groupedData).forEach(key => {
+                                const newRow = {};
+                                newRow[groupColName] = key;
+                                newResultData.push(newRow);
+                            });
+                        }
+
+                        Object.keys(groupedData).forEach(groupKey => {
+                            const groupRows = groupedData[groupKey];
+                            const aggregatedRow = {};
+                            aggregatedRow[groupColName] = groupKey; // Add the group-by column
+
+                            groupByClause.data.aggregations?.forEach(agg => {
+                                const aggColName = agg.col === '*' ? null : agg.col.split('.').pop(); // Handle COUNT(*)
+                                let aggValue;
+                                switch (agg.func) {
+                                    case 'COUNT': aggValue = groupRows.length; break;
+                                    case 'SUM': aggValue = groupRows.reduce((sum, r) => sum + (parseFloat(r[aggColName]) || 0), 0); break;
+                                    case 'AVG': aggValue = groupRows.reduce((sum, r) => sum + (parseFloat(r[aggColName]) || 0), 0) / groupRows.length; break;
+                                    case 'MIN': aggValue = Math.min(...groupRows.map(r => parseFloat(r[aggColName]) || Infinity)); break;
+                                    case 'MAX': aggValue = Math.max(...groupRows.map(r => parseFloat(r[aggColName]) || -Infinity)); break;
+                                    default: aggValue = null;
+                                }
+                                aggregatedRow[agg.alias || agg.func.toLowerCase() + '_' + (aggColName || 'count')] = aggValue;
+                            });
+                            newResultData.push(aggregatedRow);
+                        });
+                        currentData = newResultData;
+                        currentHeaders = newResultHeaders;
+
+                        // Apply HAVING (after group by)
+                        if (groupByClause.data.havingConditions && groupByClause.data.havingConditions.length > 0) {
+                            currentData = currentData.filter(row => {
+                                return groupByClause.data.havingConditions.every(cond => {
+                                    const aggAlias = cond.column; // Assume HAVING operates on aggregate aliases
+                                    const rowValue = row[aggAlias];
+                                    const condValue = isNaN(cond.value) ? cond.value : parseFloat(cond.value);
+
+                                    if (rowValue === undefined) return false;
+
+                                    switch (cond.op) {
+                                        case '>': return rowValue > condValue;
+                                        case '<': return rowValue < condValue;
+                                        case '=': return rowValue == condValue;
+                                        case '!=': return rowValue != condValue;
+                                        case '>=': return rowValue >= condValue;
+                                        case '<=': return rowValue <= condValue;
+                                        default: return true;
+                                    }
+                                });
+                            });
+                        }
+                    }
+
+                    // Apply ORDER BY
+                    const orderByClause = queryState.clauses.find(c => c.type === 'orderby');
+                    if (orderByClause && orderByClause.data.column) {
+                        const colName = orderByClause.data.column.split('.').pop(); // Get actual column name
+                        const dir = orderByClause.data.dir === 'DESC' ? -1 : 1;
+                        currentData.sort((a, b) => {
+                            const valA = a[colName];
+                            const valB = b[colName];
+                            if (typeof valA === 'string' && typeof valB === 'string') {
+                                return valA.localeCompare(valB) * dir;
+                            }
+                            return (valA - valB) * dir;
+                        });
+                    }
+
+                    // Apply LIMIT
+                    const limitClause = queryState.clauses.find(c => c.type === 'limit');
+                    if (limitClause && limitClause.data.count) {
+                        currentData = currentData.slice(0, parseInt(limitClause.data.count));
+                    }
+
+                    // Final SELECT projection
+                    let finalHeaders = [];
+                    let selectColumns = queryState.select.split(',').map(s => s.trim()).filter(Boolean);
+
+                    // If "SELECT *" is used, derive headers from the current data's keys
+                    if (selectColumns.includes('*')) {
+                        if (currentData.length > 0) {
+                            finalHeaders = Object.keys(currentData[0]);
+                        } else {
+                            finalHeaders = currentHeaders.map(h => h.split('.').pop()); // Fallback to raw current headers
+                        }
+                    } else {
+                        // Use specified select columns, stripping table aliases for display
+                        finalHeaders = selectColumns.map(col => {
+                            const parts = col.split('.');
+                            return parts.length > 1 ? parts.pop() : parts[0]; // Get raw column name
+                        });
+                    }
+
+                    const finalRows = currentData.map(row => {
+                        const newRow = {};
+                        finalHeaders.forEach(header => {
+                            // Try to map selected header to data. If header is 'd.dept_name', try 'dept_name' from row
+                            const rawColName = header.includes('.') ? header.split('.').pop() : header;
+                            newRow[header] = row[rawColName] !== undefined ? row[rawColName] : null;
+                        });
+                        return newRow;
+                    });
+
+                    return { headers: finalHeaders, rows: finalRows };
+
+                } catch (e) {
+                    console.error("Demo query failed:", e);
+                    return { headers: ['错误'], rows: [{ '错误': '无法执行此演示查询。详情请查看控制台。' }] };
+                }
+            }
+
+            // --- INITIALIZATION ---
+            function init() {
+                // Initialize dqlState and dmlState
+                dqlState = { id: null, type: 'dql', name: '', description: '', from: '', select: '*', clauses: [] };
+                dmlState = {
+                    insert: { id: null, type: 'dml', dmlType: 'insert', name: '', description: '', data: { table: '', columns: '', values: '' } },
+                    update: { id: null, type: 'dml', dmlType: 'update', name: '', description: '', data: { table: '', set: '', where: '' } },
+                    delete: { id: null, type: 'dml', dmlType: 'delete', name: '', description: '', data: { table: '', where: '' } },
+                    create: { id: null, type: 'ddl', dmlType: 'create', name: '', description: '', data: { table: '', columns: '' } }
+                };
+
+                // Set initial active state to DQL
+                currentState = dqlState;
+
+                renderHistoryList();
+                renderDQLUI(); // Render DQL UI with its initial empty state
+
+                // Ensure the DQL toggle is active on load
+                toggleDQLBtn.classList.add('active');
+                toggleDMLBtn.classList.remove('active');
+
+                // Attach symbol conversion to initial input fields
+                attachSymbolConversion(fromInput);
+                attachSymbolConversion(selectInput);
+            }
+            init();
+
+            let selectAggregations = [];
+
+            function renderSelectAggregations() {
+                const aggList = document.getElementById('select-agg-list');
+                aggList.innerHTML = '';
+                selectAggregations.forEach((agg, idx) => {
+                    const el = document.createElement('div');
+                    el.className = 'flex items-center flex-wrap gap-2 text-lg';
+                    el.innerHTML = `<span>聚合</span><select class="input-field !w-auto select-agg-func">
+                        <option value="COUNT">计数(COUNT)</option>
+                        <option value="SUM">求和(SUM)</option>
+                        <option value="AVG">平均(AVG)</option>
+                        <option value="MIN">最小(MIN)</option>
+                        <option value="MAX">最大(MAX)</option>
+                    </select><span>(</span><input type="text" class="input-field !w-24 select-agg-col" placeholder="列名" value="${agg.col}"><span>)</span><span>AS</span><input type="text" class="input-field !w-24 select-agg-alias" placeholder="别名" value="${agg.alias}"><button class="text-red-500 text-2xl select-agg-del-btn">&times;</button>`;
+                    el.querySelector('.select-agg-func').value = agg.func;
+                    el.querySelector('.select-agg-func').addEventListener('change', e => {
+                        selectAggregations[idx].func = e.target.value;
+                        syncSelectAggToInput();
+                    });
+                    el.querySelector('.select-agg-col').addEventListener('input', e => {
+                        selectAggregations[idx].col = e.target.value;
+                        syncSelectAggToInput();
+                    });
+                    el.querySelector('.select-agg-alias').addEventListener('input', e => {
+                        selectAggregations[idx].alias = e.target.value;
+                        syncSelectAggToInput();
+                    });
+                    el.querySelector('.select-agg-del-btn').addEventListener('click', () => {
+                        selectAggregations.splice(idx, 1);
+                        renderSelectAggregations();
+                        syncSelectAggToInput();
+                    });
+                    aggList.appendChild(el);
+                });
+            }
+
+            function syncSelectAggToInput() {
+                // 取原有select输入框的非聚合部分
+                const selectInput = document.getElementById('select-columns');
+                let manualCols = selectInput.value.split(',').map(s => s.trim()).filter(Boolean);
+                // 移除已由聚合区管理的聚合表达式
+                manualCols = manualCols.filter(col => !selectAggregations.some(agg => col.startsWith(`${agg.func}(`)));
+                // 拼接聚合表达式
+                const aggExprs = selectAggregations.map(agg => `${agg.func}(${agg.col || '*'})${agg.alias ? ' AS ' + agg.alias : ''}`);
+                selectInput.value = [...manualCols, ...aggExprs].filter(Boolean).join(', ');
+                renderFromBuilder();
+            }
+
+            function syncInputToSelectAgg() {
+                // 解析select输入框，识别聚合表达式，自动同步到聚合区
+                const selectInput = document.getElementById('select-columns');
+                const val = selectInput.value;
+                const aggReg = /(COUNT|SUM|AVG|MIN|MAX)\s*\(([^)]*)\)\s*(AS\s+([\w\u4e00-\u9fa5]+))?/gi;
+                let match;
+                const aggs = [];
+                while ((match = aggReg.exec(val)) !== null) {
+                    aggs.push({ func: match[1], col: match[2].trim(), alias: match[4] ? match[4].trim() : '' });
+                }
+                selectAggregations = aggs;
+                renderSelectAggregations();
+            }
+
+            document.getElementById('add-select-agg-btn').addEventListener('click', () => {
+                selectAggregations.push({ func: 'COUNT', col: '*', alias: '' });
+                renderSelectAggregations();
+                syncSelectAggToInput();
+            });
+            document.getElementById('select-columns').addEventListener('input', () => {
+                syncInputToSelectAgg();
+            });
+            // 初始化时同步一次
+            syncInputToSelectAgg();
+
+            // --- 自适应宽度 ---
+            function autoResizeInput(input) {
+                if (!input) return;
+                let span = input._mirrorSpan;
+                if (!span) {
+                    span = document.createElement('span');
+                    span.style.visibility = 'hidden';
+                    span.style.position = 'absolute';
+                    span.style.whiteSpace = 'pre';
+                    span.style.font = getComputedStyle(input).font;
+                    document.body.appendChild(span);
+                    input._mirrorSpan = span;
+                }
+                span.textContent = input.value || input.placeholder || '';
+                // 额外加点宽度，避免光标被遮挡
+                input.style.width = (span.offsetWidth + 32) + 'px';
+            }
+            selectInput.addEventListener('input', () => autoResizeInput(selectInput));
+            selectInput.addEventListener('focus', () => autoResizeInput(selectInput));
+            selectInput.addEventListener('blur', () => autoResizeInput(selectInput));
+            // 初始化时也自适应一次
+            setTimeout(() => autoResizeInput(selectInput), 100);
+
+            // 草稿本折叠逻辑
+            const notebookToggle = document.getElementById('notebook-toggle');
+            const notebookContent = document.getElementById('notebook-content');
+            const notebookArrow = document.getElementById('notebook-arrow');
+            notebookToggle.addEventListener('click', () => {
+                notebookContent.classList.toggle('hidden');
+                notebookArrow.style.transform = notebookContent.classList.contains('hidden') ? '' : 'rotate(180deg)';
+            });
+            // 草稿本内容本地存储
+            const notebookTextarea = document.getElementById('notebook-textarea');
+            notebookTextarea.value = localStorage.getItem('sqlbuilder_notebook') || '';
+            notebookTextarea.addEventListener('input', () => {
+                localStorage.setItem('sqlbuilder_notebook', notebookTextarea.value);
+            });
+            // 新建查询按钮（左上角和历史侧边栏）统一逻辑
+            function handleNewQueryClick() {
+                // 检查当前是否有未保存内容
+                const hasUnsaved = !currentState.id && (dqlState.from || dqlState.select !== '*' || (dqlState.clauses && dqlState.clauses.length > 0));
+                if (hasUnsaved) {
+                    if (!confirm('当前内容尚未保存，是否先保存？\n点击"确定"将弹出保存窗口，点击"取消"将直接新建。')) {
+                        // 直接新建
+                        dqlState = { id: null, type: 'dql', name: '', description: '', from: '', select: '*', clauses: [] };
+                        dmlState = {
+                            insert: { type: 'dml', dmlType: 'insert', data: { table: '', columns: '', values: '' } },
+                            update: { type: 'dml', dmlType: 'update', data: { table: '', set: '', where: '' } },
+                            delete: { type: 'dml', dmlType: 'delete', data: { table: '', where: '' } },
+                            create: { type: 'ddl', dmlType: 'create', data: { table: '', columns: '' } }
+                        };
+                        currentState = dqlState;
+                        renderDQLUI();
+                        showToast('已新建查询');
+                        return;
+                    } else {
+                        // 弹出保存窗口
+                        showModal(saveModal);
+                        return;
+                    }
+                }
+                // 没有未保存内容，直接新建
+                dqlState = { id: null, type: 'dql', name: '', description: '', from: '', select: '*', clauses: [] };
+                dmlState = {
+                    insert: { type: 'dml', dmlType: 'insert', data: { table: '', columns: '', values: '' } },
+                    update: { type: 'dml', dmlType: 'update', data: { table: '', set: '', where: '' } },
+                    delete: { type: 'dml', dmlType: 'delete', data: { table: '', where: '' } },
+                    create: { type: 'ddl', dmlType: 'create', data: { table: '', columns: '' } }
+                };
+                currentState = dqlState;
+                renderDQLUI();
+                showToast('已新建查询');
+                setCurrentNotebook('');
+            }
+            document.getElementById('new-query-btn-fixed').addEventListener('click', handleNewQueryClick);
+            document.getElementById('new-query-btn').addEventListener('click', handleNewQueryClick);
+            // 清除内容按钮逻辑
+            const clearBtn = document.getElementById('clear-builder-btn');
+            clearBtn.addEventListener('click', () => {
+                if (confirm('确定要清除当前内容吗？此操作不可恢复。')) {
+                    if (currentState.type === 'dql') {
+                        dqlState = { id: null, type: 'dql', name: '', description: '', from: '', select: '*', clauses: [] };
+                        currentState = dqlState;
+                        setCurrentNotebook('');
+                        renderDQLUI();
+                    } else {
+                        const activeDMLType = currentState.dmlType || 'insert';
+                        dmlState[activeDMLType] = { type: currentState.type, dmlType: activeDMLType, data: { table: '', columns: '', values: '', set: '', where: '' } };
+                        currentState = dmlState[activeDMLType];
+                        setCurrentNotebook('');
+                        renderDMLUI(activeDMLType);
+                    }
+                    showToast('内容已清除');
+                }
+            });
+
+            // --- 草稿本与查询绑定 ---
+            function getCurrentNotebook() {
+                return notebookTextarea.value;
+            }
+            function setCurrentNotebook(val) {
+                notebookTextarea.value = val || '';
+            }
+            // 历史记录加载时也恢复草稿内容（已在loadState里处理）
+            // 草稿本本地存储功能可保留，优先用查询绑定内容
+            notebookTextarea.addEventListener('input', () => {
+                localStorage.setItem('sqlbuilder_notebook_autosave', notebookTextarea.value);
+            });
+        });
+    </script>
+
+</body>
+
+</html>
